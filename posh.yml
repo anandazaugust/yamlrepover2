@@ -1,0 +1,75 @@
+steps:
+  - task: PowerShell@2
+    name: details
+    displayName: Get Approval Details
+    inputs:
+      targetType: 'inline'
+      script: |
+                $Collection="$(System.CollectionUri)"
+                $projectName="$(System.TeamProject)"
+                $projectId="$(System.TeamProjectId)"
+                $buildId="$(Build.BuildId)" # - run id not pipeline definition
+                $stageName="$(System.StageName)"
+                $password = "$env:SYSTEM_ACCESSTOKEN"
+                $approverEmail=""
+                $approverName =""
+                $approvalComment=""
+                $approvalStatusID=0
+                $approvalStatus=""
+                try
+                {
+                    # Determine the stage ID
+                    $uri = "$($Collection)$($projectName)/_apis/build/builds/$BuildID/timeline?api-version=6.0"
+                    write-Output "Calling:$uri"
+                    $username = ""
+                  
+                    $basicAuth = ("{0}:{1}" -f $username, $password)
+                    $basicAuth = [System.Text.Encoding]::UTF8.GetBytes($basicAuth)
+                    $basicAuth = [System.Convert]::ToBase64String($basicAuth)
+                    $headers = @{Authorization=("Basic {0}" -f $basicAuth)}
+                    $Response = Invoke-RestMethod -Uri "$uri" -headers $headers -Method 'get'
+                    $Response
+                    $stage = $response.records | where-object -property identifier -eq "$StageName"
+                    Write-Output "Stage:"
+                    $stage
+                  
+                    # now we can get the approval details
+                    $uri = "$($Collection)/_apis/Contribution/HierarchyQuery/project/$($projectId)?api-version=6.1-preview.1"
+                    $payload = "{`"contributionIds`":[`"ms.vss-build-web.checks-panel-data-provider`"],`"dataProviderContext`":{`"properties`":{`"buildId`":`"$BuildID`",`"stageIds`":`"$($stage.id)`",`"checkListItemType`":2,`"sourcePage`":{`"url`":`"$Collection/$projectName/_build/results?buildId=$BuildID&view=results`",`"routeId`":`"ms.vss-build-web.ci-results-hub-route`",`"routeValues`":{`"project`":`"$projectName`",`"viewname`":`"build-results`",`"controller`":`"ContributedPage`",`"action`":`"Execute`",`"serviceHost`": `"594961c2-ead9-4053-bef9-52498ac587fd (sdl)`"}}}}}"
+                    
+                    write-Output "Calling:$uri"
+                    write-Output "Payload"
+                    $payload 
+                  
+                    $Response = Invoke-RestMethod -Uri "$uri" -headers $headers -Method 'Post' -Body $payload -ContentType "application/json"
+                    $Response
+                  
+                    $approver=$response.dataProviders."ms.vss-build-web.checks-panel-data-provider"[0].manualValidations[0].steps[0].actualApprover
+                    $approverEmail = $approver.uniqueName
+                    $approverName = $approver.displayName
+                    $approvalComment = $response.dataProviders."ms.vss-build-web.checks-panel-data-provider"[0].manualValidations[0].steps[0].comment
+                    $approvalStatusID = $response.dataProviders."ms.vss-build-web.checks-panel-data-provider"[0].manualValidations[0].steps[0].status
+                    if ($approvalStatusID -eq 8)
+                    {
+                        $approvalStatus="Rejected"
+                    }
+                
+                    if ($approvalStatusID -eq 4)
+                    {
+                        $approvalStatus="Approved"
+                    }
+                    Write-Output "Approver: $approverName `($approverEmail`)"
+                    Write-Output "Status:  $approvalStatus `($approvalStatusID`)"
+                    Write-Output "Comment:  $approvalComment "
+                
+                }
+                catch
+                {
+                  write-warning ("Cannot find the approver: " + $_) 
+                }
+                    Write-Host '##vso[task.setvariable variable=myvar1]$approverName'
+                echo "##vso[task.setvariable variable=abcvar;isOutput=true]$approverName"
+
+      pwsh: true 
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)

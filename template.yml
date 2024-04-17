@@ -1,0 +1,140 @@
+
+trigger:
+- none
+
+# pool:
+#   vmImage: ubuntu-latest
+# dsfds
+
+variables: 
+  - name: sub-id
+    value: 6e54aa79-9b0b-40ed-ae27-91fdffa0a565
+  - name: client-id
+    value: 6589b09f-b35e-4dd2-86fc-d7a757d9f72e
+  - name: client-secret
+    value: uEt8Q~bOJthtZLylI39GkKNrov7scwN2uf1MoaLU
+  - name: tenant-id
+    value: 17a09c66-f406-4897-8b24-51f5313623dc
+  #  dsfd
+
+  - name: container_name
+    value: terracontainer
+
+parameters:
+  - name: envName
+    displayName: select environment to provision
+    default: dev
+    values: 
+      - dev
+      - qa
+      - sit
+      - uat
+      - prod
+  - name: TF_operation
+    displayName: select TF operation
+    default: Deploy
+  - name: buildsteps
+    displayName: buildsteps
+    type: stepList
+    default: []
+
+  - name: tfvarspara
+    displayName: tfvars for input
+
+  - name: backend
+    displayName: backend_key
+    
+
+
+
+jobs:
+      
+      - job: provision_${{parameters.envName}}_environment
+        displayName: provision ${{parameters.envName}} environment
+        
+
+        steps: 
+          # - checkout: self
+          #   path: self
+          - ${{ each step in parameters.buildsteps }}:
+            - ${{ each pair in step }}:
+                 ${{ pair.key }}: ${{ pair.value }}
+
+          
+        
+          - script: |
+              make init
+            displayName: 'make init script'  
+
+          - script: |
+              make validate 
+            displayName: 'make validate script' 
+        
+                  
+          - script: |
+              make plan 
+            displayName: 'make plan script' 
+
+          
+      - job: approval_1
+        pool: server
+        dependsOn:    provision_${{parameters.envName}}_environment
+        steps:
+          - task: ManualValidation@0
+            
+            inputs:
+                  notifyUsers: 'anandctx@outlook.com'
+
+      - job: get_approver   
+        dependsOn: approval_1 
+
+        steps:
+
+          - template: posh.yml
+          
+
+          - script: |
+
+              
+              echo $(build.sourcesdirectory)
+              echo "$(details.abcvar)"
+          
+
+      - job: test_job_applyTF
+        variables: 
+          jobvar: $[ dependencies.get_approver.outputs['details.abcvar'] ]
+        dependsOn: 
+          - get_approver 
+          - approval_1
+        condition: and(succeeded(), ne(variables['Build.QueuedBy'], variables['jobvar']))
+        steps:
+          - script: |
+             echo whoapproved: $(jobvar)
+             echo source: $(build.sourcesdirectory)
+             echo buildqueue: $(Build.QueuedBy)
+             echo buildrequestor: $(Build.RequestedFor)
+
+          - script: |
+              make init
+              make apply 
+            displayName: 'make APPLY script' 
+
+
+
+        
+
+
+
+
+      
+        
+       
+         
+
+         
+           
+         
+
+
+
+
